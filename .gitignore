@@ -1,0 +1,50 @@
+frontend/.pnpm-store/v3/files/00/4f6984993a8e22980c64d54711938cc73223020969274c4d6c39932ec892dd34318436e6d0a9e8ab03746534fda2604c4068047484b28a26fdab9da4cdf6ad
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Python (backend)
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node (frontend)
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.pnpm-store/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Recorded cassettes with any leaked credentials — never blindly commit sensitive cassettes
+backend/tests/contract/cassettes/*.local.yaml

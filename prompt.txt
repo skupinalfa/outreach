@@ -1,0 +1,14 @@
+Recherchiere zunächst das Unternehmen unter {domain} im Web.
+
+Schreibe anschließend eine personalisierte E-Mail an {last_name} (Anrede passend zu: {gender}).
+Orientiere dich stark an der Struktur und dem Tonfall dieser Vorlage, verwende wenn möglich
+jedoch unternehmensspezifischen Bezug in der Mail:
+
+--- VORLAGE ---
+{template}
+--- ENDE VORLAGE ---
+
+Gib mir das Ergebnis in folgendem Schema zurück und gib mir nur dieses Schema zurück,
+kein weiterer Prosatext:
+
+{"subject": "...", "text": "..."}
