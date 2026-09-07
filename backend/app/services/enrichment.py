@@ -19,10 +19,12 @@ from sqlalchemy.orm import Session
 
 from app.integrations import hunter
 from app.logging import get_logger
+from app.models.activity_event import ActivityActor, ActivityEventType
 from app.models.contact import Contact, ContactStatus
 from app.models.organisation import Organisation
 from app.models.settings import Settings as SettingsRow
 from app.security import secrets as secret_helpers
+from app.services import activity as activity_service
 
 log = get_logger("enrichment")
 
@@ -62,7 +64,9 @@ def enrich_contact(db: Session, contact_id: int) -> Contact:
     try:
         domain = org.domain or hunter.resolve_domain(org.name, api_key)
         if not domain:
-            _record_error(contact, "Hunter could not resolve a domain for this company.")
+            reason = "Hunter could not resolve a domain for this company."
+            _record_error(contact, reason)
+            _record_activity(db, contact, outcome="domain_not_found", reason=reason)
             return contact
         if not org.domain:
             org.domain = domain
@@ -70,9 +74,11 @@ def enrich_contact(db: Session, contact_id: int) -> Contact:
         result = hunter.find_email(contact.first_name, contact.last_name, domain, api_key)
     except hunter.HunterCredentialError as exc:
         _record_error(contact, str(exc))
+        _record_activity(db, contact, outcome="error", reason=str(exc))
         raise EnrichmentError("credential_not_set", str(exc), status=400) from exc
     except hunter.HunterError as exc:
         _record_error(contact, str(exc))
+        _record_activity(db, contact, outcome="error", reason=str(exc))
         raise EnrichmentError("hunter_error", str(exc)) from exc
 
     contact.last_enriched_at = datetime.now(UTC)
@@ -86,11 +92,61 @@ def enrich_contact(db: Session, contact_id: int) -> Contact:
             contact.position = result.position
         # A contact with any email (manual or freshly enriched) is actionable and moves out
         # of "new" — this keeps the state machine consistent with the send-flow gate.
+        status_transition: tuple[ContactStatus, ContactStatus] | None = None
         if contact.status == ContactStatus.NEW and contact.email:
+            status_transition = (contact.status, ContactStatus.ENRICHED)
             contact.status = ContactStatus.ENRICHED
+        _record_activity(
+            db,
+            contact,
+            outcome="email_found",
+            hunter_confidence=result.score,
+        )
+        if status_transition is not None:
+            _record_status_change(db, contact, *status_transition)
     else:
         contact.last_enrichment_error = "Hunter found no email for this contact."
+        _record_activity(
+            db,
+            contact,
+            outcome="email_not_found",
+            reason=contact.last_enrichment_error,
+        )
     return contact
+
+
+def _record_activity(
+    db: Session,
+    contact: Contact,
+    *,
+    outcome: str,
+    reason: str | None = None,
+    hunter_confidence: int | None = None,
+) -> None:
+    payload: dict[str, object] = {"outcome": outcome, "reason": reason}
+    if hunter_confidence is not None:
+        payload["hunter_confidence"] = hunter_confidence
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=ActivityEventType.ENRICHMENT_ATTEMPTED,
+        actor=ActivityActor.OPERATOR,
+        payload=payload,
+    )
+
+
+def _record_status_change(
+    db: Session, contact: Contact, from_status: ContactStatus, to_status: ContactStatus
+) -> None:
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=ActivityEventType.STATUS_CHANGED,
+        actor=ActivityActor.SYSTEM,
+        payload={"from": from_status.value, "to": to_status.value},
+    )
 
 
 def _record_error(contact: Contact, message: str) -> None:

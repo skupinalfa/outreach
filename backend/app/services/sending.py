@@ -9,15 +9,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from email.message import EmailMessage
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.integrations import smtp as smtp_integration
 from app.logging import get_logger
+from app.models.activity_event import ActivityActor, ActivityEventType
 from app.models.contact import Contact, ContactStatus
+from app.models.draft import Draft
 from app.models.sent_message import DeliveryStatus, SentMessage
 from app.models.settings import Settings as SettingsRow
 from app.models.todo import Todo, TodoStatus, TodoType
 from app.security import secrets as secret_helpers
+from app.services import activity as activity_service
 
 log = get_logger("sending")
 
@@ -111,6 +115,8 @@ def send_todo(
         body=body_override,
     )
 
+    draft = db.execute(select(Draft).where(Draft.contact_id == contact.id)).scalar_one_or_none()
+
     try:
         smtp_integration.send(
             message,
@@ -120,8 +126,10 @@ def send_todo(
             password=password,
         )
     except smtp_integration.SmtpCredentialError as exc:
+        _record_send_failed(db, contact, draft, str(exc), smtp_error_code=None)
         raise SendingError("credential_not_set", str(exc), status=400) from exc
     except smtp_integration.SmtpError as exc:
+        _record_send_failed(db, contact, draft, str(exc), smtp_error_code=None)
         raise SendingError("smtp_error", str(exc)) from exc
 
     sent = SentMessage(
@@ -136,8 +144,60 @@ def send_todo(
     todo.status = TodoStatus.DONE
     todo.completed_at = datetime.now(UTC)
     todo.sent_message_id = sent.id
+    todo.completed_via = "sent"
+
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=ActivityEventType.EMAIL_SENT,
+        actor=ActivityActor.OPERATOR,
+        payload={
+            "sent_message_id": sent.id,
+            "template_id": draft.template_id if draft is not None else None,
+            "recipient": contact.email,
+        },
+    )
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=ActivityEventType.TODO_COMPLETED,
+        actor=ActivityActor.OPERATOR,
+        payload={"todo_id": todo.id, "completion_via": "sent"},
+    )
 
     if contact.status == ContactStatus.ENRICHED:
+        previous = contact.status
         contact.status = ContactStatus.CONTACTED
+        activity_service.record_event(
+            db,
+            contact_id=contact.id,
+            organisation_id=contact.organisation_id,
+            event_type=ActivityEventType.STATUS_CHANGED,
+            actor=ActivityActor.SYSTEM,
+            payload={"from": previous.value, "to": contact.status.value},
+        )
 
     return sent
+
+
+def _record_send_failed(
+    db: Session,
+    contact: Contact,
+    draft: Draft | None,
+    reason: str,
+    smtp_error_code: str | None,
+) -> None:
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=ActivityEventType.SEND_FAILED,
+        actor=ActivityActor.OPERATOR,
+        payload={
+            "draft_id": draft.id if draft is not None else None,
+            "reason": reason,
+            "smtp_error_code": smtp_error_code,
+        },
+    )

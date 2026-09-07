@@ -9,15 +9,23 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import api_error, conflict, not_found
 from app.db import get_db
+from app.models.activity_event import ActivityActor, ActivityEventType
 from app.models.contact import Contact, ContactStatus
 from app.models.draft import Draft
 from app.models.organisation import Organisation
+from app.models.todo import Todo, TodoStatus, TodoType
 from app.schemas.base import PaginatedOut
 from app.schemas.contact import ContactIn, ContactOut, ContactPatch, DraftSummary
 from app.schemas.delete_impact import DeleteImpactOut
 from app.security.auth import require_auth
+from app.services import activity as activity_service
 from app.services.delete_impact import contact_impact
 from app.services.enrichment import EnrichmentError, enrich_contact
+
+# Status transitions that cancel pending follow-up todos for the contact (base FR-023).
+_FOLLOW_UP_CANCELLING_STATUSES = frozenset(
+    {ContactStatus.REPLIED, ContactStatus.NOT_INTERESTED, ContactStatus.MEETING_BOOKED}
+)
 
 router = APIRouter(
     prefix="/contacts",
@@ -104,6 +112,13 @@ def create(body: ContactIn, db: Session = Depends(get_db)) -> ContactOut:
     except IntegrityError as exc:
         db.rollback()
         raise conflict("A contact with this email already exists in the organisation.") from exc
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=ActivityEventType.LEAD_CREATED,
+        actor=ActivityActor.OPERATOR,
+    )
     return _serialise(db, contact)
 
 
@@ -120,6 +135,7 @@ def patch(contact_id: int, body: ContactPatch, db: Session = Depends(get_db)) ->
     contact = db.get(Contact, contact_id)
     if contact is None:
         raise not_found("Contact")
+    previous_status = contact.status
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(contact, field, value)
     try:
@@ -127,7 +143,45 @@ def patch(contact_id: int, body: ContactPatch, db: Session = Depends(get_db)) ->
     except IntegrityError as exc:
         db.rollback()
         raise conflict("A contact with this email already exists in the organisation.") from exc
+    if body.status is not None and body.status != previous_status:
+        activity_service.record_event(
+            db,
+            contact_id=contact.id,
+            organisation_id=contact.organisation_id,
+            event_type=ActivityEventType.STATUS_CHANGED,
+            actor=ActivityActor.OPERATOR,
+            payload={"from": previous_status.value, "to": contact.status.value},
+        )
+        if contact.status in _FOLLOW_UP_CANCELLING_STATUSES:
+            _cancel_follow_ups_for(db, contact)
     return _serialise(db, contact)
+
+
+def _cancel_follow_ups_for(db: Session, contact: Contact) -> None:
+    """Cancel every pending follow-up todo for the contact (base FR-023) and emit one
+    `todo_cancelled` activity event per cancellation."""
+    pending = (
+        db.execute(
+            select(Todo).where(
+                Todo.contact_id == contact.id,
+                Todo.type == TodoType.FOLLOW_UP,
+                Todo.status.in_([TodoStatus.SCHEDULED, TodoStatus.OPEN]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for todo in pending:
+        todo.status = TodoStatus.CANCELLED
+        todo.completed_via = "cancelled_by_status_change"
+        activity_service.record_event(
+            db,
+            contact_id=contact.id,
+            organisation_id=contact.organisation_id,
+            event_type=ActivityEventType.TODO_CANCELLED,
+            actor=ActivityActor.SYSTEM,
+            payload={"todo_id": todo.id, "reason": "status_changed"},
+        )
 
 
 @router.get("/{contact_id}/delete-impact", response_model=DeleteImpactOut)

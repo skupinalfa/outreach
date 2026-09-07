@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, LargeBinary, SmallInteger, String, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    SmallInteger,
+    String,
+    text,
+)
 from sqlalchemy.dialects.postgresql import CITEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,3 +47,15 @@ class Settings(Base, TimestampMixin):
     timezone: Mapped[str] = mapped_column(
         String, nullable=False, server_default=text("'Europe/Berlin'")
     )
+
+    # IMAP for the "Save to mailbox" feature (FR-050). Same Fernet-encryption rule as
+    # SMTP credentials; NULL host disables the feature (button is hidden in the UI).
+    imap_host: Mapped[str | None] = mapped_column(String)
+    imap_port: Mapped[int | None] = mapped_column(Integer)
+    imap_username_ct: Mapped[bytes | None] = mapped_column(LargeBinary)
+    imap_password_ct: Mapped[bytes | None] = mapped_column(LargeBinary)
+    imap_use_tls: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
+    imap_drafts_folder: Mapped[str | None] = mapped_column(String)  # operator override
+    imap_drafts_folder_detected: Mapped[str | None] = mapped_column(String)  # detection cache

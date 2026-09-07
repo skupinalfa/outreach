@@ -111,5 +111,8 @@ def send(todo_id: int, body: TodoSendIn, db: Session = Depends(get_db)) -> SentM
     try:
         sent = send_todo(db, todo_id, body.subject, body.body)
     except SendingError as exc:
+        # Persist the send_failed activity event recorded inside the service before the
+        # exception bubbles up (mirrors the enrich handler's pattern for audit fields).
+        db.commit()
         raise api_error(exc.code, exc.message, exc.status) from exc
     return SentMessageOut.model_validate(sent)

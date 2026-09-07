@@ -1,3 +1,4 @@
+from app.models.activity_event import ActivityActor, ActivityEvent, ActivityEventType
 from app.models.contact import Contact, ContactStatus
 from app.models.draft import Draft
 from app.models.organisation import Organisation
@@ -9,6 +10,9 @@ from app.models.template import Template
 from app.models.todo import Todo, TodoStatus, TodoType
 
 __all__ = [
+    "ActivityActor",
+    "ActivityEvent",
+    "ActivityEventType",
     "Contact",
     "ContactStatus",
     "DeliveryStatus",

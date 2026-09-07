@@ -60,6 +60,10 @@ class Todo(Base, TimestampMixin):
         server_default=TodoStatus.OPEN.value,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How the todo reached its terminal state. NULL while `status IN ('scheduled','open')`.
+    # Vocabulary: 'sent' | 'mailbox_stored' | 'manual' | 'cancelled_by_status_change'.
+    # Not a Postgres enum — see research.md R7.
+    completed_via: Mapped[str | None] = mapped_column(String)
 
     contact: Mapped[Contact] = relationship(back_populates="todos")
     draft: Mapped[Draft | None] = relationship()

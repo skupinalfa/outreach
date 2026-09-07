@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.integrations import openai_client
 from app.logging import get_logger
+from app.models.activity_event import ActivityActor, ActivityEventType
 from app.models.contact import Contact
 from app.models.draft import Draft
 from app.models.organisation import Organisation
@@ -22,6 +23,7 @@ from app.models.settings import Settings as SettingsRow
 from app.models.template import Template
 from app.models.todo import Todo, TodoStatus, TodoType
 from app.security import secrets as secret_helpers
+from app.services import activity as activity_service
 from app.services.openai_parser import OpenAIParseError, parse_openai_response
 from app.services.prompt_builder import (
     ContactContext,
@@ -81,15 +83,28 @@ def _upsert_send_todo(db: Session, contact: Contact, draft: Draft, org: Organisa
 
     title = f"Send email to {contact.first_name} {contact.last_name} ({org.name})"
     if existing is None:
-        db.add(
-            Todo(
-                type=TodoType.SEND,
-                title=title,
-                contact_id=contact.id,
-                draft_id=draft.id,
-                due_at=datetime.now(UTC),
-                status=TodoStatus.OPEN,
-            )
+        due_at = datetime.now(UTC)
+        todo = Todo(
+            type=TodoType.SEND,
+            title=title,
+            contact_id=contact.id,
+            draft_id=draft.id,
+            due_at=due_at,
+            status=TodoStatus.OPEN,
+        )
+        db.add(todo)
+        db.flush()
+        activity_service.record_event(
+            db,
+            contact_id=contact.id,
+            organisation_id=contact.organisation_id,
+            event_type=ActivityEventType.TODO_CREATED,
+            actor=ActivityActor.SYSTEM,
+            payload={
+                "todo_id": todo.id,
+                "todo_type": TodoType.SEND.value,
+                "due_at": due_at.isoformat(),
+            },
         )
     else:
         existing.title = title
@@ -141,6 +156,7 @@ def generate_draft(db: Session, contact_id: int, template_id: int) -> Draft:
         raise GenerationError("openai_parse_error", str(exc)) from exc
 
     existing = db.execute(select(Draft).where(Draft.contact_id == contact.id)).scalar_one_or_none()
+    previous_generated_at: datetime | None = None
     if existing is None:
         draft = Draft(
             contact_id=contact.id,
@@ -153,6 +169,7 @@ def generate_draft(db: Session, contact_id: int, template_id: int) -> Draft:
         )
         db.add(draft)
     else:
+        previous_generated_at = existing.generated_at
         existing.template_id = template.id
         existing.template_body_snapshot = template.body
         existing.prompt_id = prompt_row.id
@@ -160,12 +177,37 @@ def generate_draft(db: Session, contact_id: int, template_id: int) -> Draft:
         existing.subject = subject
         existing.body = body
         existing.generated_at = datetime.now(UTC)
+        # A fresh draft version invalidates the mailbox coordinate of the previous version
+        # (FR-046 replace-in-place is per-draft-version — research.md R6).
+        existing.mailbox_folder = None
+        existing.mailbox_uid = None
+        existing.mailbox_stored_at = None
         draft = existing
 
     db.flush()
 
     contact.last_generated_at = datetime.now(UTC)
     contact.last_generation_error = None
+
+    payload: dict[str, object] = {
+        "draft_id": draft.id,
+        "template_id": template.id,
+        "template_name": template.name,
+        "prompt_id": prompt_row.id,
+    }
+    if previous_generated_at is None:
+        event_type = ActivityEventType.DRAFT_GENERATED
+    else:
+        event_type = ActivityEventType.DRAFT_REGENERATED
+        payload["previous_generated_at"] = previous_generated_at.isoformat()
+    activity_service.record_event(
+        db,
+        contact_id=contact.id,
+        organisation_id=contact.organisation_id,
+        event_type=event_type,
+        actor=ActivityActor.OPERATOR,
+        payload=payload,
+    )
 
     _upsert_send_todo(db, contact, draft, org)
     return draft

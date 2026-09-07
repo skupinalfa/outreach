@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base, TimestampMixin
@@ -36,6 +36,12 @@ class Draft(Base, TimestampMixin):
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    # Save-to-mailbox coordinates for the last successful IMAP APPEND (FR-046, FR-049).
+    # All three are NULL when the draft has never been saved to the mail account.
+    mailbox_folder: Mapped[str | None] = mapped_column(String)
+    mailbox_uid: Mapped[int | None] = mapped_column(BigInteger)
+    mailbox_stored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     contact: Mapped[Contact] = relationship(back_populates="drafts")
     template: Mapped[Template] = relationship()

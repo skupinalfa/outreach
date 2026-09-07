@@ -18,6 +18,7 @@ class DeleteImpactCounts(BaseModel):
     drafts: int
     sent_messages: int
     open_todos: int
+    activity_events: int
 
 
 class DeleteImpactOut(BaseModel):

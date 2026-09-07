@@ -14,6 +14,7 @@ from app.models.organisation import Organisation
 from app.models.sent_message import SentMessage
 from app.models.todo import Todo, TodoStatus
 from app.schemas.delete_impact import DeleteImpactCounts, DeleteImpactOut, DeleteImpactTarget
+from app.services import activity as activity_service
 
 # open + scheduled together match FR-027a's "open/pending todos (including scheduled follow-ups)".
 _PENDING_TODO_STATUSES = (TodoStatus.OPEN, TodoStatus.SCHEDULED)
@@ -40,6 +41,8 @@ def organisation_impact(session: Session, org: Organisation) -> DeleteImpactOut:
         .where(Todo.status.in_(_PENDING_TODO_STATUSES))
     ).scalar_one()
 
+    activity_events = activity_service.count_for_organisation(session, org.id)
+
     return DeleteImpactOut(
         target=DeleteImpactTarget(kind="organisation", id=org.id, name=org.name),
         counts=DeleteImpactCounts(
@@ -47,6 +50,7 @@ def organisation_impact(session: Session, org: Organisation) -> DeleteImpactOut:
             drafts=drafts,
             sent_messages=sent_messages,
             open_todos=open_todos,
+            activity_events=activity_events,
         ),
     )
 
@@ -65,6 +69,8 @@ def contact_impact(session: Session, contact: Contact) -> DeleteImpactOut:
         .where(Todo.status.in_(_PENDING_TODO_STATUSES))
     ).scalar_one()
 
+    activity_events = activity_service.count_for_contact(session, contact.id)
+
     return DeleteImpactOut(
         target=DeleteImpactTarget(
             kind="contact",
@@ -76,5 +82,6 @@ def contact_impact(session: Session, contact: Contact) -> DeleteImpactOut:
             drafts=drafts,
             sent_messages=sent_messages,
             open_todos=open_todos,
+            activity_events=activity_events,
         ),
     )

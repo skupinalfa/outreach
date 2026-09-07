@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.api.errors import api_error, not_found
 from app.db import get_db
+from app.models.activity_event import ActivityActor, ActivityEventType
 from app.models.contact import Contact
 from app.models.draft import Draft
 from app.models.todo import Todo, TodoStatus, TodoType
 from app.schemas.draft import DraftIn, DraftOut, DraftPatch
 from app.security.auth import require_auth
+from app.services import activity as activity_service
 from app.services.generation import GenerationError, generate_draft
 
 router = APIRouter(tags=["drafts"], dependencies=[Depends(require_auth)])
@@ -66,4 +68,13 @@ def delete_draft(contact_id: int, db: Session = Depends(get_db)):
     ).scalars().all()
     for todo in open_send_todos:
         todo.status = TodoStatus.CANCELLED
+        # completed_via left NULL — the reason lives on the activity event (data-model.md).
+        activity_service.record_event(
+            db,
+            contact_id=contact.id,
+            organisation_id=contact.organisation_id,
+            event_type=ActivityEventType.TODO_CANCELLED,
+            actor=ActivityActor.OPERATOR,
+            payload={"todo_id": todo.id, "reason": "draft_discarded"},
+        )
     db.delete(draft)
