@@ -101,11 +101,13 @@ def test_delete_impact_counts_full_tree(authed: TestClient, session_factory) -> 
 
     body = authed.get(f"/api/v1/organisations/{org_id}/delete-impact").json()
     assert body["target"] == {"kind": "organisation", "id": org_id, "name": "Impacted"}
+    # Rows seeded directly via `session.add(...)` — bypasses API, no activity events emitted.
     assert body["counts"] == {
         "contacts": 3,
         "drafts": 2,
         "sent_messages": 5,
         "open_todos": 4,
+        "activity_events": 0,
     }
 
 
@@ -114,11 +116,13 @@ def test_delete_impact_empty_organisation_is_all_zeros(authed: TestClient) -> No
     body = authed.get(f"/api/v1/organisations/{org['id']}/delete-impact").json()
     assert body["target"]["kind"] == "organisation"
     assert body["target"]["name"] == "Empty"
+    # An empty organisation has no contacts and therefore no activity events attached to it.
     assert body["counts"] == {
         "contacts": 0,
         "drafts": 0,
         "sent_messages": 0,
         "open_todos": 0,
+        "activity_events": 0,
     }
 
 

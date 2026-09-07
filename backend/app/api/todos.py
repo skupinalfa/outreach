@@ -12,8 +12,18 @@ from app.db import get_db
 from app.models.contact import Contact
 from app.models.todo import Todo, TodoStatus, TodoType
 from app.schemas.base import PaginatedOut
-from app.schemas.todo import SentMessageOut, TodoIn, TodoOut, TodoPatch, TodoSendIn
+from app.schemas.todo import (
+    DraftOutBrief,
+    MailboxCoords,
+    SaveToMailboxOut,
+    SentMessageOut,
+    TodoIn,
+    TodoOut,
+    TodoPatch,
+    TodoSendIn,
+)
 from app.security.auth import require_auth
+from app.services.mailbox_drafts import MailboxSaveError, save_to_mailbox
 from app.services.sending import SendingError, send_todo
 from app.services.todo_promotion import promote_scheduled_todos
 
@@ -116,3 +126,21 @@ def send(todo_id: int, body: TodoSendIn, db: Session = Depends(get_db)) -> SentM
         db.commit()
         raise api_error(exc.code, exc.message, exc.status) from exc
     return SentMessageOut.model_validate(sent)
+
+
+@router.post("/{todo_id}/save-to-mailbox", response_model=SaveToMailboxOut)
+def save_to_mailbox_endpoint(
+    todo_id: int, body: TodoSendIn, db: Session = Depends(get_db)
+) -> SaveToMailboxOut:
+    try:
+        result = save_to_mailbox(db, todo_id, body.subject, body.body)
+    except MailboxSaveError as exc:
+        # Persist the mailbox_store_failed activity event before returning the error.
+        db.commit()
+        raise api_error(exc.code, exc.message, exc.status, detail=exc.detail or None) from exc
+    return SaveToMailboxOut(
+        todo=TodoOut.model_validate(result.todo),
+        draft=DraftOutBrief.model_validate(result.draft),
+        mailbox=MailboxCoords(folder=result.folder, uid=result.uid, stored_at=result.stored_at),
+        replaced_previous=result.replaced_previous,
+    )

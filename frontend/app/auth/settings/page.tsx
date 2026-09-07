@@ -11,7 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { SettingsView, TestConnectionResult } from "@/lib/types";
+import type {
+  ImapTestConnectionResult,
+  SettingsView,
+  TestConnectionResult,
+} from "@/lib/types";
 
 interface Draft {
   hunter_api_key: string;
@@ -20,6 +24,12 @@ interface Draft {
   smtp_port: string;
   smtp_username: string;
   smtp_password: string;
+  imap_host: string;
+  imap_port: string;
+  imap_username: string;
+  imap_password: string;
+  imap_use_tls: boolean;
+  imap_drafts_folder: string;
   sender_display_name: string;
   sender_email: string;
   follow_up_cadence_days: string;
@@ -34,6 +44,12 @@ const EMPTY_DRAFT: Draft = {
   smtp_port: "",
   smtp_username: "",
   smtp_password: "",
+  imap_host: "",
+  imap_port: "",
+  imap_username: "",
+  imap_password: "",
+  imap_use_tls: true,
+  imap_drafts_folder: "",
   sender_display_name: "",
   sender_email: "",
   follow_up_cadence_days: "",
@@ -41,7 +57,7 @@ const EMPTY_DRAFT: Draft = {
   timezone: "",
 };
 
-type Section = "hunter" | "openai" | "smtp";
+type Section = "hunter" | "openai" | "smtp" | "imap";
 
 interface Notice {
   section: string;
@@ -74,6 +90,12 @@ export default function SettingsPage() {
       smtp_port: s.smtp.port ? String(s.smtp.port) : "",
       smtp_username: "",
       smtp_password: "",
+      imap_host: s.imap.host ?? "",
+      imap_port: s.imap.port ? String(s.imap.port) : "",
+      imap_username: "",
+      imap_password: "",
+      imap_use_tls: s.imap.use_tls,
+      imap_drafts_folder: s.imap.drafts_folder ?? "",
       sender_display_name: s.sender_display_name ?? "",
       sender_email: s.sender_email ?? "",
       follow_up_cadence_days: String(s.follow_up_cadence_days),
@@ -110,6 +132,17 @@ export default function SettingsPage() {
       if (draft.smtp_password) smtp.password = draft.smtp_password;
       if (Object.keys(smtp).length > 0) patch.smtp = smtp;
 
+      const imap: Record<string, unknown> = {};
+      if (draft.imap_host) imap.host = draft.imap_host;
+      if (draft.imap_port) imap.port = Number(draft.imap_port);
+      if (draft.imap_username) imap.username = draft.imap_username;
+      if (draft.imap_password) imap.password = draft.imap_password;
+      if (s.imap.use_tls !== draft.imap_use_tls) imap.use_tls = draft.imap_use_tls;
+      if (draft.imap_drafts_folder !== (s.imap.drafts_folder ?? "")) {
+        imap.drafts_folder = draft.imap_drafts_folder;
+      }
+      if (Object.keys(imap).length > 0) patch.imap = imap;
+
       if (draft.sender_display_name) patch.sender_display_name = draft.sender_display_name;
       if (draft.sender_email) patch.sender_email = draft.sender_email;
       if (draft.follow_up_cadence_days) {
@@ -141,18 +174,32 @@ export default function SettingsPage() {
         payload = draft.hunter_api_key ? { api_key: draft.hunter_api_key } : {};
       } else if (section === "openai") {
         payload = draft.openai_api_key ? { api_key: draft.openai_api_key } : {};
-      } else {
+      } else if (section === "smtp") {
         payload = {};
         if (draft.smtp_host) payload.host = draft.smtp_host;
         if (draft.smtp_port) payload.port = Number(draft.smtp_port);
         if (draft.smtp_username) payload.username = draft.smtp_username;
         if (draft.smtp_password) payload.password = draft.smtp_password;
+      } else {
+        payload = {};
+        if (draft.imap_host) payload.host = draft.imap_host;
+        if (draft.imap_port) payload.port = Number(draft.imap_port);
+        if (draft.imap_username) payload.username = draft.imap_username;
+        if (draft.imap_password) payload.password = draft.imap_password;
+        payload.use_tls = draft.imap_use_tls;
       }
-      const result = await apiPost<TestConnectionResult>(path, payload);
+      const result =
+        section === "imap"
+          ? await apiPost<ImapTestConnectionResult>(path, payload)
+          : await apiPost<TestConnectionResult>(path, payload);
+      const message =
+        section === "imap" && result.ok && (result as ImapTestConnectionResult).resolved_drafts_folder
+          ? `${result.message}`
+          : result.message;
       pushNotice({
         section,
         kind: result.ok ? "success" : "error",
-        message: result.message,
+        message,
       });
     } catch (err) {
       pushNotice({
@@ -326,6 +373,103 @@ export default function SettingsPage() {
             {testing === "smtp" ? "Testing…" : "Test connection"}
           </Button>
           {noticeFor("smtp")}
+        </CardContent>
+      </Card>
+
+      <Card className={cn(highlightRing("imap"))}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Save-to-mailbox (IMAP)
+            {s.imap.host && s.imap.username_set && s.imap.password_set ? (
+              <Badge variant="secondary">
+                {s.imap.drafts_folder_detected
+                  ? `credentials set · Drafts: ${s.imap.drafts_folder_detected}`
+                  : "credentials set"}
+              </Badge>
+            ) : (
+              <Badge variant="destructive">not configured</Badge>
+            )}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Optional. When configured, the todo screen shows a “Save to mailbox” button that
+            uploads the draft to your mail account instead of sending directly.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2 space-y-2">
+              <Label htmlFor="imap-host">Host</Label>
+              <Input
+                id="imap-host"
+                value={draft.imap_host}
+                onChange={(e) => setDraft({ ...draft, imap_host: e.target.value })}
+                placeholder="imap.mailbox.org"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="imap-port">Port</Label>
+              <Input
+                id="imap-port"
+                inputMode="numeric"
+                value={draft.imap_port}
+                onChange={(e) => setDraft({ ...draft, imap_port: e.target.value })}
+                placeholder="993"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="imap-username">Username</Label>
+              <Input
+                id="imap-username"
+                value={draft.imap_username}
+                onChange={(e) => setDraft({ ...draft, imap_username: e.target.value })}
+                placeholder={s.imap.username_set ? "Leave blank to keep current" : "user@…"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="imap-password">Password / app-password</Label>
+              <Input
+                id="imap-password"
+                type="password"
+                value={draft.imap_password}
+                onChange={(e) => setDraft({ ...draft, imap_password: e.target.value })}
+                placeholder={s.imap.password_set ? "Leave blank to keep current" : ""}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draft.imap_use_tls}
+                onChange={(e) => setDraft({ ...draft, imap_use_tls: e.target.checked })}
+              />
+              Use TLS (port 993). Uncheck for STARTTLS (usually port 143).
+            </label>
+            <div className="space-y-2">
+              <Label htmlFor="imap-drafts-folder">
+                Drafts folder override (optional)
+              </Label>
+              <Input
+                id="imap-drafts-folder"
+                value={draft.imap_drafts_folder}
+                onChange={(e) =>
+                  setDraft({ ...draft, imap_drafts_folder: e.target.value })
+                }
+                placeholder="Auto-detected"
+              />
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            type="button"
+            disabled={testing !== null}
+            onClick={() => onTest("imap")}
+          >
+            {testing === "imap" ? "Testing…" : "Test connection"}
+          </Button>
+          {noticeFor("imap")}
         </CardContent>
       </Card>
 

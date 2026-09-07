@@ -91,11 +91,14 @@ def test_delete_impact_counts_contact_subtree(authed: TestClient, session_factor
 
     body = authed.get(f"/api/v1/contacts/{contact_id}/delete-impact").json()
     assert body["target"] == {"kind": "contact", "id": contact_id, "name": "Max Müller"}
+    # Rows were seeded directly via `session.add(...)`, bypassing the API — so no
+    # activity_event rows were emitted by the wiring.
     assert body["counts"] == {
         "contacts": 0,
         "drafts": 1,
         "sent_messages": 3,
         "open_todos": 3,
+        "activity_events": 0,
     }
 
 
@@ -108,11 +111,13 @@ def test_delete_impact_bare_contact_is_all_zeros(authed: TestClient) -> None:
     body = authed.get(f"/api/v1/contacts/{contact['id']}/delete-impact").json()
     assert body["target"]["kind"] == "contact"
     assert body["target"]["name"] == "A B"
+    # Creating the contact via the API emits one `lead_created` activity event (feature 002).
     assert body["counts"] == {
         "contacts": 0,
         "drafts": 0,
         "sent_messages": 0,
         "open_todos": 0,
+        "activity_events": 1,
     }
 
 

@@ -87,8 +87,28 @@ export interface Todo {
   due_at: string;
   status: TodoStatus;
   completed_at: string | null;
+  completed_via: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SaveToMailboxResponse {
+  todo: Todo;
+  draft: {
+    id: number;
+    contact_id: number;
+    subject: string;
+    body: string;
+    template_id: number;
+    generated_at: string;
+    mailbox_folder: string | null;
+    mailbox_uid: number | null;
+    mailbox_stored_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  mailbox: { folder: string; uid: number | null; stored_at: string };
+  replaced_previous: boolean;
 }
 
 export interface SentMessage {
@@ -117,6 +137,15 @@ export interface SettingsView {
     username_set: boolean;
     password_set: boolean;
   };
+  imap: {
+    host: string | null;
+    port: number | null;
+    username_set: boolean;
+    password_set: boolean;
+    use_tls: boolean;
+    drafts_folder: string | null;
+    drafts_folder_detected: string | null;
+  };
   sender_display_name: string | null;
   sender_email: string | null;
   follow_up_cadence_days: number;
@@ -129,6 +158,10 @@ export interface SettingsView {
 export interface TestConnectionResult {
   ok: boolean;
   message: string;
+}
+
+export interface ImapTestConnectionResult extends TestConnectionResult {
+  resolved_drafts_folder: string | null;
 }
 
 export interface DashboardActivity {

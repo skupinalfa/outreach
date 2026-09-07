@@ -6,8 +6,11 @@ from __future__ import annotations
 from fastapi import HTTPException
 
 
-def api_error(code: str, message: str, status: int) -> HTTPException:
-    return HTTPException(status_code=status, detail={"error": {"code": code, "message": message}})
+def api_error(code: str, message: str, status: int, detail: dict | None = None) -> HTTPException:
+    error: dict = {"code": code, "message": message}
+    if detail:
+        error["detail"] = detail
+    return HTTPException(status_code=status, detail={"error": error})
 
 
 def not_found(resource: str) -> HTTPException:

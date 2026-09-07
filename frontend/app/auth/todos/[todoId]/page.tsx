@@ -11,7 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { apiDelete, apiGet, apiPost, ApiError } from "@/lib/api";
-import type { Contact, Draft, Organisation, SentMessage, Todo } from "@/lib/types";
+import type {
+  Contact,
+  Draft,
+  Organisation,
+  SaveToMailboxResponse,
+  SentMessage,
+  SettingsView,
+  Todo,
+} from "@/lib/types";
 
 interface Notice {
   kind: "success" | "error";
@@ -56,9 +64,15 @@ export default function TodoDetailPage() {
     enabled: !!todoQuery.data && todoQuery.data.type === "send",
   });
 
+  const settingsQuery = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => apiGet<SettingsView>("/settings"),
+  });
+
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [savingToMailbox, setSavingToMailbox] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
   useEffect(() => {
@@ -86,6 +100,31 @@ export default function TodoDetailPage() {
     }
   }
 
+  async function onSaveToMailbox() {
+    setSavingToMailbox(true);
+    setNotice(null);
+    try {
+      const result = await apiPost<SaveToMailboxResponse>(
+        `/todos/${todoId}/save-to-mailbox`,
+        { subject, body },
+      );
+      await qc.invalidateQueries({ queryKey: ["todos"] });
+      await qc.invalidateQueries({ queryKey: ["todo", todoId] });
+      const replaced = result.replaced_previous ? " (replaced previous)" : "";
+      setNotice({
+        kind: "success",
+        message: `Saved to ${result.mailbox.folder}${replaced}. Finish sending from your mail client.`,
+      });
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        message: err instanceof ApiError ? err.message : "Save-to-mailbox failed.",
+      });
+    } finally {
+      setSavingToMailbox(false);
+    }
+  }
+
   async function onDiscard() {
     if (!todoQuery.data) return;
     try {
@@ -107,6 +146,19 @@ export default function TodoDetailPage() {
 
   const todo = todoQuery.data;
   const isSend = todo.type === "send";
+  const imapConfigured =
+    !!settingsQuery.data?.imap.host &&
+    settingsQuery.data.imap.username_set &&
+    settingsQuery.data.imap.password_set;
+  const busy = sending || savingToMailbox;
+  const completionLabel =
+    todo.status === "done"
+      ? todo.completed_via === "mailbox_stored"
+        ? "Completed (saved to mailbox)"
+        : todo.completed_via === "sent"
+          ? "Completed (sent)"
+          : `Completed (${todo.completed_via ?? "manual"})`
+      : null;
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -114,6 +166,7 @@ export default function TodoDetailPage() {
         <h1 className="text-2xl font-semibold">{todo.title}</h1>
         <Badge variant={isSend ? "default" : "secondary"}>{todo.type}</Badge>
         <Badge variant="outline">{todo.status}</Badge>
+        {completionLabel && <Badge variant="secondary">{completionLabel}</Badge>}
       </div>
       {contactQuery.data && orgQuery.data && (
         <p className="text-sm text-muted-foreground">
@@ -161,17 +214,32 @@ export default function TodoDetailPage() {
                 {notice.message}
               </p>
             )}
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Button
                 onClick={onSend}
-                disabled={sending || !subject || !body || todo.status !== "open"}
+                disabled={busy || !subject || !body || todo.status !== "open"}
               >
-                {sending ? "Sending…" : "Send"}
+                {sending ? "Sending…" : "Send now"}
               </Button>
-              <Button variant="outline" onClick={onDiscard} disabled={sending}>
+              {imapConfigured && (
+                <Button
+                  onClick={onSaveToMailbox}
+                  disabled={busy || !subject || !body || todo.status !== "open"}
+                  title="Upload the draft to your mail account's Drafts folder — you finish sending from your mail client."
+                >
+                  {savingToMailbox ? "Saving…" : "Save to mailbox"}
+                </Button>
+              )}
+              <Button variant="outline" onClick={onDiscard} disabled={busy}>
                 Discard draft
               </Button>
             </div>
+            {!imapConfigured && (
+              <p className="text-xs text-muted-foreground">
+                Tip: configure IMAP in Settings to enable “Save to mailbox” — the draft lands
+                in your mail client's Drafts folder for hand-editing before you send it.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

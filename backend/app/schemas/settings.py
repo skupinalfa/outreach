@@ -33,10 +33,21 @@ class SmtpView(BaseModel):
     password_set: bool = False
 
 
+class ImapView(BaseModel):
+    host: str | None = None
+    port: int | None = None
+    username_set: bool = False
+    password_set: bool = False
+    use_tls: bool = True
+    drafts_folder: str | None = None  # operator override
+    drafts_folder_detected: str | None = None  # auto-detected cache
+
+
 class SettingsOut(BaseModel):
     hunter_api_key_set: bool = False
     openai_api_key_set: bool = False
     smtp: SmtpView = Field(default_factory=SmtpView)
+    imap: ImapView = Field(default_factory=ImapView)
     sender_display_name: str | None = None
     sender_email: str | None = None
     follow_up_cadence_days: int = 5
@@ -53,12 +64,22 @@ class SmtpPatch(BaseModel):
     password: str | None = None
 
 
+class ImapPatch(BaseModel):
+    host: str | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
+    username: str | None = None
+    password: str | None = None
+    use_tls: bool | None = None
+    drafts_folder: str | None = None
+
+
 class SettingsPatch(BaseModel):
     """All fields optional. For secrets and free-form strings, `""` clears the stored value."""
 
     hunter_api_key: str | None = None
     openai_api_key: str | None = None
     smtp: SmtpPatch | None = None
+    imap: ImapPatch | None = None
     sender_display_name: str | None = None
     sender_email: BlankableEmail = None
     follow_up_cadence_days: int | None = Field(default=None, ge=1, le=30)
@@ -70,6 +91,10 @@ class SettingsPatch(BaseModel):
 class TestConnectionOut(BaseModel):
     ok: bool
     message: str
+
+
+class ImapTestConnectionOut(TestConnectionOut):
+    resolved_drafts_folder: str | None = None
 
 
 class HunterTestIn(BaseModel):
@@ -85,3 +110,11 @@ class SmtpTestIn(BaseModel):
     port: int | None = Field(default=None, ge=1, le=65535)
     username: str | None = None
     password: str | None = None
+
+
+class ImapTestIn(BaseModel):
+    host: str | None = None
+    port: int | None = Field(default=None, ge=1, le=65535)
+    username: str | None = None
+    password: str | None = None
+    use_tls: bool | None = None

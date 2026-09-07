@@ -17,6 +17,7 @@ class TodoOut(TimestampedOut):
     due_at: datetime
     status: TodoStatus
     completed_at: datetime | None
+    completed_via: str | None = None
 
 
 class TodoIn(BaseModel):
@@ -44,3 +45,27 @@ class SentMessageOut(TimestampedOut):
     sent_at: datetime
     delivery_status: str
     error: str | None
+
+
+class MailboxCoords(BaseModel):
+    folder: str
+    uid: int | None
+    stored_at: datetime
+
+
+class DraftOutBrief(TimestampedOut):
+    contact_id: int
+    subject: str
+    body: str
+    template_id: int
+    generated_at: datetime
+    mailbox_folder: str | None = None
+    mailbox_uid: int | None = None
+    mailbox_stored_at: datetime | None = None
+
+
+class SaveToMailboxOut(BaseModel):
+    todo: TodoOut
+    draft: DraftOutBrief
+    mailbox: MailboxCoords
+    replaced_previous: bool
