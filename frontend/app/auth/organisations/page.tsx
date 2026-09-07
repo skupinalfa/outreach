@@ -6,10 +6,11 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { apiDelete, apiGet, apiPost, ApiError } from "@/lib/api";
+import { apiGet, apiPost, ApiError } from "@/lib/api";
 import type { Organisation, Paginated } from "@/lib/types";
 
 interface Notice {
@@ -25,6 +26,7 @@ export default function OrganisationsPage() {
   const [domain, setDomain] = useState("");
   const [notes, setNotes] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Organisation | null>(null);
 
   const listQuery = useQuery({
     queryKey: ["organisations", search],
@@ -57,24 +59,6 @@ export default function OrganisationsPage() {
     },
   });
 
-  const remove = useMutation({
-    mutationFn: (id: number) => apiDelete<void>(`/organisations/${id}`),
-    onSuccess: async () => {
-      setNotice({ kind: "success", message: "Organisation deleted." });
-      await qc.invalidateQueries({ queryKey: ["organisations"] });
-    },
-    onError: (err) => {
-      setNotice({
-        kind: "error",
-        message: err instanceof ApiError ? err.message : "Delete failed.",
-      });
-    },
-  });
-
-  function askDelete(o: Organisation) {
-    if (!confirm(`Delete "${o.name}"? This is blocked if it has contacts.`)) return;
-    remove.mutate(o.id);
-  }
 
   return (
     <div className="space-y-6">
@@ -145,6 +129,19 @@ export default function OrganisationsPage() {
         />
       </div>
 
+      <DeleteConfirmDialog
+        open={pendingDelete !== null}
+        impactPath={`/organisations/${pendingDelete?.id ?? 0}/delete-impact`}
+        deletePath={`/organisations/${pendingDelete?.id ?? 0}`}
+        entityKind="organisation"
+        entityName={pendingDelete?.name ?? ""}
+        onClose={() => setPendingDelete(null)}
+        onDeleted={() =>
+          setNotice({ kind: "success", message: "Organisation deleted." })
+        }
+        invalidateQueryKeys={[["organisations"]]}
+      />
+
       <div className="rounded-md border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left">
@@ -182,7 +179,12 @@ export default function OrganisationsPage() {
                   {new Date(o.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <Button variant="ghost" size="sm" onClick={() => askDelete(o)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPendingDelete(o)}
+                    aria-label={`Delete ${o.name}`}
+                  >
                     Delete
                   </Button>
                 </td>

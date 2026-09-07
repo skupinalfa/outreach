@@ -135,6 +135,10 @@ export default function LeadsPage() {
   }
 
   // ---- Existing-contact picker (mode='existing') --------------------------
+  // FR-027b: this picker is a *workflow* affordance for reusing a contact — delete is
+  // intentionally not exposed here so operators can't accidentally destroy records
+  // from a "start a new lead" context. Delete lives on the Contact detail and the
+  // Contacts list only.
   const [contactSearch, setContactSearch] = useState("");
   const contactQueryParams = new URLSearchParams({ limit: "20" });
   if (contactSearch) contactQueryParams.set("q", contactSearch);

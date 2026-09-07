@@ -14,7 +14,9 @@ from app.models.draft import Draft
 from app.models.organisation import Organisation
 from app.schemas.base import PaginatedOut
 from app.schemas.contact import ContactIn, ContactOut, ContactPatch, DraftSummary
+from app.schemas.delete_impact import DeleteImpactOut
 from app.security.auth import require_auth
+from app.services.delete_impact import contact_impact
 from app.services.enrichment import EnrichmentError, enrich_contact
 
 router = APIRouter(
@@ -126,6 +128,14 @@ def patch(contact_id: int, body: ContactPatch, db: Session = Depends(get_db)) ->
         db.rollback()
         raise conflict("A contact with this email already exists in the organisation.") from exc
     return _serialise(db, contact)
+
+
+@router.get("/{contact_id}/delete-impact", response_model=DeleteImpactOut)
+def delete_impact(contact_id: int, db: Session = Depends(get_db)) -> DeleteImpactOut:
+    contact = db.get(Contact, contact_id)
+    if contact is None:
+        raise not_found("Contact")
+    return contact_impact(db, contact)
 
 
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)

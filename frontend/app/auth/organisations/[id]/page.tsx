@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { InlineEmailCell } from "@/components/inline-email-cell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,9 +23,11 @@ interface Notice {
 
 export default function OrganisationDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const orgId = Number(params.id);
   const qc = useQueryClient();
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
 
   const orgQuery = useQuery({
     queryKey: ["organisation", orgId],
@@ -106,12 +109,28 @@ export default function OrganisationDetailPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <Link href="/auth/organisations" className="text-sm text-muted-foreground hover:underline">
-          ← All organisations
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold">{orgQuery.data.name}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <Link href="/auth/organisations" className="text-sm text-muted-foreground hover:underline">
+            ← All organisations
+          </Link>
+          <h1 className="mt-1 text-2xl font-semibold">{orgQuery.data.name}</h1>
+        </div>
+        <Button variant="destructive" onClick={() => setShowDelete(true)}>
+          Delete organisation
+        </Button>
       </div>
+
+      <DeleteConfirmDialog
+        open={showDelete}
+        impactPath={`/organisations/${orgId}/delete-impact`}
+        deletePath={`/organisations/${orgId}`}
+        entityKind="organisation"
+        entityName={orgQuery.data.name}
+        onClose={() => setShowDelete(false)}
+        onDeleted={() => router.push("/auth/organisations")}
+        invalidateQueryKeys={[["organisations"], ["contacts"]]}
+      />
 
       <Card>
         <CardHeader>
@@ -144,6 +163,9 @@ export default function OrganisationDetailPage() {
         </p>
       )}
 
+      {/* FR-027b: delete is intentionally not exposed here. This embedded contacts
+          sub-list only supports read + inline email edit. Contact delete lives on the
+          Contact detail screen and the Contacts list. */}
       <Card>
         <CardHeader>
           <CardTitle>Contacts ({contactsQuery.data?.length ?? 0})</CardTitle>

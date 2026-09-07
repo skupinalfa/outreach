@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,8 +21,10 @@ interface Notice {
 
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
+  const router = useRouter();
   const contactId = Number(params.contactId);
   const qc = useQueryClient();
+  const [showDelete, setShowDelete] = useState(false);
 
   const contactQuery = useQuery({
     queryKey: ["contact", contactId],
@@ -170,12 +173,31 @@ export default function ContactDetailPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">
-          {contact.first_name} {contact.last_name}
-        </h1>
-        <Badge variant="secondary">{contact.status}</Badge>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">
+            {contact.first_name} {contact.last_name}
+          </h1>
+          <Badge variant="secondary">{contact.status}</Badge>
+        </div>
+        <Button variant="destructive" onClick={() => setShowDelete(true)}>
+          Delete contact
+        </Button>
       </div>
+
+      <DeleteConfirmDialog
+        open={showDelete}
+        impactPath={`/contacts/${contactId}/delete-impact`}
+        deletePath={`/contacts/${contactId}`}
+        entityKind="contact"
+        entityName={`${contact.first_name} ${contact.last_name}`.trim()}
+        onClose={() => setShowDelete(false)}
+        onDeleted={() => router.push("/auth/contacts")}
+        invalidateQueryKeys={[
+          ["contacts"],
+          ["organisation", contact.organisation_id, "contacts"],
+        ]}
+      />
 
       <Card>
         <CardHeader>

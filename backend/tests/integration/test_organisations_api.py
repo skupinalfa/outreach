@@ -30,7 +30,11 @@ def test_duplicate_name_returns_conflict(authed: TestClient) -> None:
     assert response.json()["error"]["code"] == "conflict"
 
 
-def test_delete_blocks_when_contacts_exist(authed: TestClient) -> None:
+def test_delete_cascades_contacts(authed: TestClient) -> None:
+    """FR-001: deleting an organisation cascades to its contacts (and their drafts,
+    sent_messages, todos via the child FKs). Detailed cascade coverage lives in
+    test_organisations_delete_api.py; this smoke check just confirms the DELETE now
+    returns 204 with a contact present."""
     org = authed.post("/api/v1/organisations", json={"name": "Gamma"}).json()
     contact = authed.post(
         "/api/v1/contacts",
@@ -42,10 +46,8 @@ def test_delete_blocks_when_contacts_exist(authed: TestClient) -> None:
     )
     assert contact.status_code == 201, contact.text
 
-    blocked = authed.delete(f"/api/v1/organisations/{org['id']}")
-    assert blocked.status_code == 409
-    assert blocked.json()["error"]["code"] == "conflict"
+    response = authed.delete(f"/api/v1/organisations/{org['id']}")
+    assert response.status_code == 204
 
-    authed.delete(f"/api/v1/contacts/{contact.json()['id']}")
-    allowed = authed.delete(f"/api/v1/organisations/{org['id']}")
-    assert allowed.status_code == 204
+    # The cascade removed the contact too — fetching it now yields 404.
+    assert authed.get(f"/api/v1/contacts/{contact.json()['id']}").status_code == 404

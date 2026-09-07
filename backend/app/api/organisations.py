@@ -11,8 +11,10 @@ from app.models.contact import Contact
 from app.models.organisation import Organisation
 from app.schemas.base import PaginatedOut
 from app.schemas.contact import ContactOut
+from app.schemas.delete_impact import DeleteImpactOut
 from app.schemas.organisation import OrganisationIn, OrganisationOut, OrganisationPatch
 from app.security.auth import require_auth
+from app.services.delete_impact import organisation_impact
 
 router = APIRouter(
     prefix="/organisations",
@@ -101,14 +103,20 @@ def patch(org_id: int, body: OrganisationPatch, db: Session = Depends(get_db)) -
     return org
 
 
-@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete(org_id: int, db: Session = Depends(get_db)):
+@router.get("/{org_id}/delete-impact", response_model=DeleteImpactOut)
+def delete_impact(org_id: int, db: Session = Depends(get_db)) -> DeleteImpactOut:
     org = db.get(Organisation, org_id)
     if org is None:
         raise not_found("Organisation")
-    has_contacts = db.execute(
-        select(func.count()).select_from(Contact).where(Contact.organisation_id == org_id)
-    ).scalar_one()
-    if has_contacts:
-        raise conflict("Organisation has contacts. Delete the contacts first.")
+    return organisation_impact(db, org)
+
+
+@router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete(org_id: int, db: Session = Depends(get_db)):
+    # Cascades through the ON DELETE CASCADE FK on contact.organisation_id (see
+    # migration 0002_org_cascade) which in turn cascades to draft, sent_message, and
+    # todo. Frontend enforces the impact-count confirmation (see FR-027a).
+    org = db.get(Organisation, org_id)
+    if org is None:
+        raise not_found("Organisation")
     db.delete(org)

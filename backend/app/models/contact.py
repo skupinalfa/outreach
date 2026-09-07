@@ -31,7 +31,7 @@ class Contact(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     organisation_id: Mapped[int] = mapped_column(
-        ForeignKey("organisation.id", ondelete="RESTRICT"),
+        ForeignKey("organisation.id", ondelete="CASCADE"),
         nullable=False,
     )
     first_name: Mapped[str] = mapped_column(String, nullable=False)

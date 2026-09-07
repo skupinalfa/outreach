@@ -4,8 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 
+import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { InlineEmailCell } from "@/components/inline-email-cell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiGet } from "@/lib/api";
 import type { Contact, ContactStatus, Organisation, Paginated } from "@/lib/types";
@@ -24,6 +26,7 @@ export default function ContactsPage() {
   const [search, setSearch] = useState("");
   const [orgId, setOrgId] = useState<string>("");
   const [status, setStatus] = useState<ContactStatus | "">("");
+  const [pendingDelete, setPendingDelete] = useState<Contact | null>(null);
 
   const orgsQuery = useQuery({
     queryKey: ["organisations", "for-filter"],
@@ -83,6 +86,18 @@ export default function ContactsPage() {
         </select>
       </div>
 
+      <DeleteConfirmDialog
+        open={pendingDelete !== null}
+        impactPath={`/contacts/${pendingDelete?.id ?? 0}/delete-impact`}
+        deletePath={`/contacts/${pendingDelete?.id ?? 0}`}
+        entityKind="contact"
+        entityName={
+          pendingDelete ? `${pendingDelete.first_name} ${pendingDelete.last_name}`.trim() : ""
+        }
+        onClose={() => setPendingDelete(null)}
+        invalidateQueryKeys={[["contacts"], ["organisations"]]}
+      />
+
       <div className="rounded-md border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left">
@@ -91,19 +106,20 @@ export default function ContactsPage() {
               <th className="px-4 py-2 font-medium">Organisation</th>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2" />
             </tr>
           </thead>
           <tbody>
             {contactsQuery.isLoading && (
               <tr>
-                <td colSpan={4} className="px-4 py-4 text-muted-foreground">
+                <td colSpan={5} className="px-4 py-4 text-muted-foreground">
                   Loading…
                 </td>
               </tr>
             )}
             {contactsQuery.data?.items.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-4 text-muted-foreground">
+                <td colSpan={5} className="px-4 py-4 text-muted-foreground">
                   No contacts found.
                 </td>
               </tr>
@@ -132,6 +148,16 @@ export default function ContactsPage() {
                 </td>
                 <td className="px-4 py-2">
                   <Badge variant="secondary">{c.status}</Badge>
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPendingDelete(c)}
+                    aria-label={`Delete ${c.first_name} ${c.last_name}`}
+                  >
+                    Delete
+                  </Button>
                 </td>
               </tr>
             ))}
