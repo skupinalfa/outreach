@@ -12,6 +12,17 @@ class Settings(BaseSettings):
     fernet_key: SecretStr = Field(...)
     session_secret: SecretStr = Field(...)
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalise_db_url(cls, v: str) -> str:
+        # Railway's Postgres plugin emits `postgresql://` or `postgres://` which
+        # SQLAlchemy routes to the psycopg2 dialect. We ship psycopg v3, so rewrite
+        # to the explicit `postgresql+psycopg://` driver scheme.
+        for old in ("postgres://", "postgresql://"):
+            if v.startswith(old):
+                return "postgresql+psycopg://" + v[len(old):]
+        return v
+
     @field_validator("fernet_key")
     @classmethod
     def _validate_fernet_key(cls, value: SecretStr) -> SecretStr:
