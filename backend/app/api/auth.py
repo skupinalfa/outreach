@@ -22,12 +22,20 @@ class AuthMeOut(BaseModel):
 @router.post("/login", status_code=status.HTTP_204_NO_CONTENT)
 def login(body: PasswordIn, response: Response, db: SASession = Depends(get_db)) -> None:
     session = auth_service.login(db, body.password)
+    # `SameSite=None; Secure` — required for cross-site cookie sending when the
+    # frontend and backend live on different subdomains (e.g. `frontend-*.up.
+    # railway.app` and `backend-*.up.railway.app`, which the browser treats as
+    # different sites for cookie purposes). `SameSite=Lax` would silently drop
+    # the cookie on every fetch after login, keeping the user stuck on /login.
+    # Browsers reject `SameSite=None` without `Secure`, so this pair moves in
+    # lockstep with `cookie_secure` (True on Railway HTTPS, False in local dev).
+    cookie_secure = get_settings().cookie_secure
     response.set_cookie(
         key=auth_service.SESSION_COOKIE,
         value=session.id,
         httponly=True,
-        secure=get_settings().cookie_secure,
-        samesite="lax",
+        secure=cookie_secure,
+        samesite="none" if cookie_secure else "lax",
         expires=session.expires_at,
     )
 
@@ -39,7 +47,15 @@ def logout(
     db: SASession = Depends(get_db),
 ) -> None:
     auth_service.logout(db, session.id)
-    response.delete_cookie(auth_service.SESSION_COOKIE)
+    # Attributes must match what `login` set, or the browser won't scope the
+    # deletion to the same cookie slot.
+    cookie_secure = get_settings().cookie_secure
+    response.delete_cookie(
+        auth_service.SESSION_COOKIE,
+        secure=cookie_secure,
+        samesite="none" if cookie_secure else "lax",
+        httponly=True,
+    )
 
 
 @router.get("/me", response_model=AuthMeOut)

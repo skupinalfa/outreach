@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from app.api import activity as activity_api
 from app.api import auth as auth_api
 from app.api import contacts as contacts_api
 from app.api import dashboard as dashboard_api
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_api.router, prefix=settings.api_prefix)
     app.include_router(dashboard_api.router, prefix=settings.api_prefix)
     app.include_router(hunter_api.router, prefix=settings.api_prefix)
+    app.include_router(activity_api.router, prefix=settings.api_prefix)
 
     return app
 

@@ -35,13 +35,15 @@ class _FakeIMAP:
             return ("NO", [None])
         return ("OK", self._list_response)
 
-    def examine(self, folder: bytes):
-        # imaplib passes bytes; the resolver builds them via `"<name>"`.encode('ascii').
+    def select(self, folder: bytes, readonly: bool = False):
+        # imaplib exposes EXAMINE as `select(..., readonly=True)`; the resolver relies on
+        # the readonly path so the fake asserts it stays that way.
+        assert readonly is True, "resolver must EXAMINE (readonly), not SELECT for write"
         name = folder.decode().strip('"')
         self.examine_calls.append(name)
         return ("OK", [b"0"]) if name in self._readable else ("NO", [b"nope"])
 
-    def close(self) -> None:  # examine + close pairs the way imaplib expects
+    def close(self) -> None:  # select(readonly=True) + close pairs the way imaplib expects
         pass
 
 

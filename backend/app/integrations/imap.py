@@ -179,8 +179,9 @@ def _detect_via_special_use(imap: imaplib.IMAP4) -> str | None:
 
 
 def _folder_readable(imap: imaplib.IMAP4, folder: str) -> bool:
+    # `imaplib` exposes EXAMINE as `select(..., readonly=True)`; there is no `imap.examine`.
     try:
-        typ, _ = imap.examine(_encode_folder(folder))
+        typ, _ = imap.select(_encode_folder(folder), readonly=True)
     except imaplib.IMAP4.error:
         return False
     if typ != "OK":

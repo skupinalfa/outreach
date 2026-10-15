@@ -38,14 +38,16 @@ function notify(err: ApiError, path: string): void {
   }
 }
 
-const baseUrl = () => process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
+// Browser fetches go to the frontend's own origin. Next.js `rewrites()` in
+// `next.config.ts` proxies `/api/v1/*` to the backend service. This keeps the
+// session cookie on the frontend domain (so `AuthLayout` SSR can see it) and
+// removes cross-origin CORS from the picture entirely.
 async function request<T>(
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(`${baseUrl()}/api/v1${path}`, {
+  const res = await fetch(`/api/v1${path}`, {
     method,
     credentials: "include",
     headers: body === undefined ? {} : { "content-type": "application/json" },

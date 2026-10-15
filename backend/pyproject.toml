@@ -59,6 +59,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "live: hits real external services; skipped unless LIVE_INTEGRATION=1",
+  "slow: opt-in load-scale integration tests; run with `pytest -m slow`",
 ]
 
 [tool.mypy]

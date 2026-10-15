@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { ActivityRow } from "@/components/activity/ActivityRow";
 import { DeleteConfirmDialog } from "@/components/delete-confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,19 +13,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { apiGet, apiPatch, apiPost, ApiError } from "@/lib/api";
-import type { Contact, Draft, Organisation, Template } from "@/lib/types";
+import type { Contact, ContactActivityResponse, Draft, Organisation, Template } from "@/lib/types";
 
 interface Notice {
   kind: "success" | "error";
   message: string;
 }
 
+type Tab = "detail" | "activity";
+
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const contactId = Number(params.contactId);
   const qc = useQueryClient();
   const [showDelete, setShowDelete] = useState(false);
+  const initialTab: Tab = searchParams.get("tab") === "activity" ? "activity" : "detail";
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const [activityOrder, setActivityOrder] = useState<"desc" | "asc">("desc");
 
   const contactQuery = useQuery({
     queryKey: ["contact", contactId],
@@ -122,6 +129,15 @@ export default function ContactDetailPage() {
     enabled: !Number.isNaN(contactId),
   });
 
+  const activityQuery = useQuery({
+    queryKey: ["contact-activity", contactId, activityOrder],
+    queryFn: () =>
+      apiGet<ContactActivityResponse>(
+        `/contacts/${contactId}/activity?order=${activityOrder}&limit=200`,
+      ),
+    enabled: !Number.isNaN(contactId) && tab === "activity",
+  });
+
   async function onEnrich() {
     setEnriching(true);
     setNotice(null);
@@ -199,6 +215,70 @@ export default function ContactDetailPage() {
         ]}
       />
 
+      <div className="flex gap-2 border-b">
+        {(["detail", "activity"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={
+              "px-3 py-2 text-sm font-medium capitalize " +
+              (tab === t
+                ? "border-b-2 border-primary text-primary"
+                : "text-muted-foreground hover:text-foreground")
+            }
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {tab === "activity" && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Activity</CardTitle>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={activityOrder === "desc" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActivityOrder("desc")}
+              >
+                Newest first
+              </Button>
+              <Button
+                type="button"
+                variant={activityOrder === "asc" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActivityOrder("asc")}
+              >
+                Oldest first
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {activityQuery.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {activityQuery.isError && (
+              <p className="text-sm text-destructive">Could not load activity.</p>
+            )}
+            {activityQuery.data && activityQuery.data.items.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                No activity yet — this contact was just created.
+              </p>
+            )}
+            {activityQuery.data && activityQuery.data.items.length > 0 && (
+              <ul className="divide-y">
+                {activityQuery.data.items.map((event) => (
+                  <ActivityRow key={event.id} event={event} />
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "detail" && (
+        <>
       <Card>
         <CardHeader>
           <CardTitle>Contact</CardTitle>
@@ -336,6 +416,8 @@ export default function ContactDetailPage() {
             </p>
           </CardContent>
         </Card>
+      )}
+        </>
       )}
     </div>
   );

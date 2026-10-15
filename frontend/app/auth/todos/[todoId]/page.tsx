@@ -237,7 +237,7 @@ export default function TodoDetailPage() {
             {!imapConfigured && (
               <p className="text-xs text-muted-foreground">
                 Tip: configure IMAP in Settings to enable “Save to mailbox” — the draft lands
-                in your mail client's Drafts folder for hand-editing before you send it.
+                in your mail client&apos;s Drafts folder for hand-editing before you send it.
               </p>
             )}
           </CardContent>

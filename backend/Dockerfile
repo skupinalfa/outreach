@@ -17,4 +17,8 @@ COPY . .
 ENV PATH="/opt/venv/bin:$PATH"
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# `sh -c` so we can chain migrations before the server AND interpolate $PORT
+# (Railway injects PORT at runtime; local docker-compose leaves it unset and
+# falls back to 8000). `exec` replaces the shell with uvicorn so PID 1 is the
+# server itself — SIGTERM propagation and graceful shutdown work correctly.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

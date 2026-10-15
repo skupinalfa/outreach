@@ -5,7 +5,9 @@ from typing import Any
 import structlog
 
 _REDACT_KEYS = {"password", "api_key", "token", "secret", "authorization", "cookie"}
-_REDACT_KEY_SUFFIXES = ("_ct", "_password", "_token", "_key")
+# `_username` covers SMTP + IMAP plaintext usernames alongside their `_ct` ciphertexts and
+# `_password` counterparts (feature 002 T044 — matches Constitution II).
+_REDACT_KEY_SUFFIXES = ("_ct", "_password", "_token", "_key", "_username")
 _REDACT_VALUE_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9]{20,}"),  # OpenAI keys
     re.compile(r"gAAAA[A-Za-z0-9_\-=]{40,}"),  # Fernet ciphertexts

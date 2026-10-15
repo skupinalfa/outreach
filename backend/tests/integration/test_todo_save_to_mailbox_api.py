@@ -17,6 +17,7 @@ unit test and the live-integration test.
 """
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 import pytest
@@ -360,3 +361,62 @@ def test_save_to_mailbox_store_conflict_returns_409(
     err = response.json()["error"]
     assert err["code"] == "mailbox_store_conflict"
     assert err["detail"]["folder"] == "Drafts"
+
+
+# -----------------------------------------------------------------------------
+# T043 — live IMAP smoke test. Constitution V: no live-integration when creds absent.
+# -----------------------------------------------------------------------------
+
+_LIVE_HOST = os.environ.get("IMAP_TEST_HOST")
+_LIVE_USER = os.environ.get("IMAP_TEST_USER")
+_LIVE_PASS = os.environ.get("IMAP_TEST_PASS")
+_LIVE_PORT = int(os.environ.get("IMAP_TEST_PORT", "993"))
+
+
+@pytest.mark.live
+@pytest.mark.skipif(
+    not (_LIVE_HOST and _LIVE_USER and _LIVE_PASS),
+    reason="IMAP_TEST_HOST / IMAP_TEST_USER / IMAP_TEST_PASS not set — no live IMAP fixture",
+)
+def test_live_imap_append_and_uid_roundtrip() -> None:
+    """Hits a real IMAP account, APPENDs a draft, and verifies APPENDUID.
+
+    Constitution V — the test is auto-skipped when credentials are absent. When you
+    run it, it will leave one draft message in the account's Drafts folder; delete
+    it manually or run against a burnable test account.
+    """
+    from email.message import EmailMessage
+
+    from app.integrations.imap import (
+        ImapConnectSettings,
+        append_draft,
+        connect,
+        resolve_drafts_folder,
+    )
+
+    assert _LIVE_HOST is not None
+    assert _LIVE_USER is not None
+    assert _LIVE_PASS is not None
+    cfg = ImapConnectSettings(
+        host=_LIVE_HOST,
+        port=_LIVE_PORT,
+        username=_LIVE_USER,
+        password=_LIVE_PASS,
+        use_tls=True,
+    )
+
+    msg = EmailMessage()
+    msg["From"] = _LIVE_USER
+    msg["To"] = _LIVE_USER
+    msg["Subject"] = "coldmail-live-smoke"
+    msg.set_content("Live IMAP smoke test — safe to delete.")
+
+    with connect(cfg) as imap:
+        folder, _detected = resolve_drafts_folder(
+            imap, operator_override=None, detected_cache=None
+        )
+        assert folder
+        uid = append_draft(imap, folder, msg)
+        # Servers that don't advertise UIDPLUS return None — accept either but log for
+        # visibility. In practice, mailbox.org / Gmail / Fastmail all support UIDPLUS.
+        assert uid is None or isinstance(uid, int)

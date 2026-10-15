@@ -1,21 +1,23 @@
 """Activity-event schemas (feature 002).
 
-This module is intentionally partial in this milestone: only the pieces exercised by the
-Phase-2 write path and the Phase-6 cascade tests are implemented. The reader-side response
-schema (`ActivityEventView`) and the query-filter model live here too but are populated when
-the corresponding API endpoints land in Phase 3 (`GET /contacts/{id}/activity`) and Phase 5
-(`GET /activity`). Adding them now would be dead code until then (Constitution I).
-
 Payload shapes for each `ActivityEventType` are documented as `TypedDict`s so services that
 call `record_event(..., payload=...)` have a reference. They are NOT enforced at runtime —
 `activity_event.payload` is stored as raw JSONB (research.md R2).
+
+The reader-side `ActivityEventView`, filter model, and cursor codec are consumed by the
+per-contact endpoint (`GET /contacts/{id}/activity`, T017) and the global endpoint
+(`GET /activity`, T036).
 """
 from __future__ import annotations
 
 import base64
 import json
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
+
+from pydantic import BaseModel, Field, field_validator
+
+from app.models.activity_event import ActivityActor, ActivityEventType
 
 # ---------------------------------------------------------------------------
 # Payload shape references (documentation only; not runtime-validated).
@@ -115,3 +117,88 @@ def decode_cursor(cursor: str) -> tuple[datetime, int]:
     raw = base64.urlsafe_b64decode(padded.encode())
     data: dict[str, Any] = json.loads(raw)
     return datetime.fromisoformat(data["occurred_at"]), int(data["id"])
+
+
+# ---------------------------------------------------------------------------
+# Response view (per-contact + global endpoints, contracts/api.md § ActivityEventView).
+# Every field is always present so the frontend renders one component; nulls are used for
+# the optional `message_snapshot` join and the optional organisation reference (some events
+# — like `lead_created` for a contact without an organisation — should still be very rare,
+# but the schema tolerates it).
+# ---------------------------------------------------------------------------
+
+
+class ContactRef(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+
+
+class OrganisationRef(BaseModel):
+    id: int
+    name: str
+
+
+class ContactRefWithOrg(ContactRef):
+    organisation: OrganisationRef | None = None
+
+
+class MessageSnapshot(BaseModel):
+    subject: str
+    body: str
+    delivery_status: str | None = None
+
+
+class ActivityEventView(BaseModel):
+    id: int
+    event_type: ActivityEventType
+    actor: ActivityActor
+    occurred_at: datetime
+    contact: ContactRef
+    organisation: OrganisationRef | None = None
+    summary: str
+    payload: dict[str, Any]
+    message_snapshot: MessageSnapshot | None = None
+
+
+class ContactActivityOut(BaseModel):
+    items: list[ActivityEventView]
+    total: int
+    contact: ContactRefWithOrg
+
+
+class GlobalActivityOut(BaseModel):
+    items: list[ActivityEventView]
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Query filter for the global endpoint (contracts/api.md § GET /api/v1/activity).
+# FastAPI binds each field from a query parameter; `event_type` accepts repetition.
+# ---------------------------------------------------------------------------
+
+
+WindowPreset = Literal["today", "last_7d", "last_30d"]
+
+
+class ActivityFilter(BaseModel):
+    event_type: list[ActivityEventType] = Field(default_factory=list)
+    contact_id: int | None = None
+    organisation_id: int | None = None
+    since: datetime | None = None
+    until: datetime | None = None
+    window: WindowPreset | None = None
+    cursor: str | None = None
+    limit: int = Field(default=50, ge=1, le=200)
+
+    @field_validator("cursor")
+    @classmethod
+    def _cursor_is_decodable(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        try:
+            decode_cursor(v)
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            raise ValueError("cursor is not a valid activity keyset cursor") from exc
+        return v

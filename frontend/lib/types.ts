@@ -180,6 +180,64 @@ export interface DashboardActivity {
   };
 }
 
+export type ActivityEventType =
+  | "lead_created"
+  | "enrichment_attempted"
+  | "draft_generated"
+  | "draft_regenerated"
+  | "draft_stored_in_mailbox"
+  | "mailbox_store_failed"
+  | "email_sent"
+  | "send_failed"
+  | "todo_created"
+  | "todo_completed"
+  | "todo_cancelled"
+  | "follow_up_scheduled"
+  | "status_changed";
+
+export type ActivityActor = "operator" | "system";
+
+export interface ActivityContactRef {
+  id: number;
+  first_name: string;
+  last_name: string;
+}
+
+export interface ActivityOrganisationRef {
+  id: number;
+  name: string;
+}
+
+export interface ActivityMessageSnapshot {
+  subject: string;
+  body: string;
+  delivery_status: string | null;
+}
+
+export interface ActivityEventView {
+  id: number;
+  event_type: ActivityEventType;
+  actor: ActivityActor;
+  occurred_at: string;
+  contact: ActivityContactRef;
+  organisation: ActivityOrganisationRef | null;
+  summary: string;
+  payload: Record<string, unknown>;
+  message_snapshot: ActivityMessageSnapshot | null;
+}
+
+export interface ContactActivityResponse {
+  items: ActivityEventView[];
+  total: number;
+  contact: ActivityContactRef & { organisation: ActivityOrganisationRef | null };
+}
+
+export interface GlobalActivityResponse {
+  items: ActivityEventView[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
 export interface DashboardOverview {
   onboarding_required: boolean;
   todos?: {

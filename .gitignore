@@ -10,6 +10,7 @@
 .env.local
 .env.*.local
 
+fernet_key.txt
 # Python (backend)
 __pycache__/
 *.pyc
